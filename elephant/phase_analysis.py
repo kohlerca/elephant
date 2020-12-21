@@ -10,9 +10,13 @@ from __future__ import division, print_function, unicode_literals
 
 import numpy as np
 import quantities as pq
+import neo
 
 __all__ = [
-    "spike_triggered_phase"
+    "spike_triggered_phase",
+    "phase_locking_value",
+    "mean_phase_vector",
+    "phase_difference"
 ]
 
 
@@ -182,3 +186,32 @@ def spike_triggered_phase(hilbert_transform, spiketrains, interpolate):
     for i, entry in enumerate(result_times):
         result_times[i] = pq.Quantity(entry, units=entry[0].units).flatten()
     return result_phases, result_amps, result_times
+
+
+def phase_difference(alpha, beta):
+    r"""
+    Calculates the difference between a pair of phases.
+
+    The output is in range from :math:`-\pi` to :math:`\pi`.
+
+    Parameters
+    ----------
+    alpha : np.ndarray
+        Phases in radians.
+    beta : np.ndarray
+        Phases in radians.
+
+    Returns
+    -------
+    phase_diff : np.ndarray
+        Difference between phases `alpha` and `beta`.
+        Range: :math:`[-\pi, \pi]`
+
+    Notes
+    -----
+    The usage of `np.arctan2` ensures that the range of the phase difference
+    is :math:`[-\pi, \pi]` and is located in the correct quadrant.
+    """
+    delta = alpha - beta
+    phase_diff = np.arctan2(np.sin(delta), np.cos(delta))
+    return phase_diff
