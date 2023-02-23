@@ -6,9 +6,15 @@ Methods for performing phase analysis.
     :toctree: _toctree/phase_analysis
 
     spike_triggered_phase
-    phase_locking_value
-    mean_phase_vector
-    phase_difference
+    weighted_phase_lag_index
+
+References
+----------
+
+.. bibliography:: ../bib/elephant.bib
+   :labelprefix: ph
+   :keyprefix: phase-
+   :style: unsrt
 
 :copyright: Copyright 2014-2022 by the Elephant team, see `doc/authors.rst`.
 :license: Modified BSD, see LICENSE.txt for details.
@@ -22,9 +28,7 @@ import neo
 
 __all__ = [
     "spike_triggered_phase",
-    "phase_locking_value",
-    "mean_phase_vector",
-    "phase_difference"
+    "weighted_phase_lag_index"
 ]
 
 
@@ -205,30 +209,91 @@ def spike_triggered_phase(hilbert_transform, spiketrains, interpolate):
     return result_phases, result_amps, result_times
 
 
-def phase_difference(alpha, beta):
+def weighted_phase_lag_index(signal_i, signal_j, sampling_frequency=None,
+                             absolute_value=True):
     r"""
-    Calculates the difference between a pair of phases.
+    Calculates the Weigthed Phase-Lag Index (WPLI) :cite:`phase-Vinck11_1548`.
 
-    The output is in range from :math:`-\pi` to :math:`\pi`.
+    This function estimates the WPLI, which is a measure of phase-synchrony. It
+    describes for two given signals i and j, which is leading/lagging the other
+    signal in the frequency domain across multiple trials.
 
     Parameters
     ----------
-    alpha : np.ndarray
-        Phases in radians.
-    beta : np.ndarray
-        Phases in radians.
+    signal_i, signal_j : np.array, pq.quantity.Quantity, neo.AnalogSignal
+        Time-series of the first and second signals,
+        with `t` time points and `n` trials.
+    sampling_frequency : pq.quantity.Quantity (default: None)
+        Sampling frequency of the signals in Hz. Not needed if signal i and j
+        are neo.AnalogSignals.
+    absolute_value : boolean (default: True)
+        Takes the absolute value of the numerator in the WPLI-formula.
+        When set to `False`, the WPLI contains additional directionality
+        information about which signal leads/lags the other signal:
+            - wpli > 0 : first signal i leads second signal j
+            - wpli < 0 : first signal i lags second signal j
 
     Returns
     -------
-    phase_diff : np.ndarray
-        Difference between phases `alpha` and `beta`.
-        Range: :math:`[-\pi, \pi]`
+    freqs : pq.quantity.Quantity
+        Positive frequencies in Hz associated with the estimates of `wpli`.
+        Range: :math:`[0, sampling frequency/2]`
+    wpli : np.ndarray with dtype=float
+        Weighted phase-lag index of `signal_i` and `signal_j` across trials.
+        Range: :math:`[0, 1]`
+
+    Raises
+    ------
+    ValueError
+        If trial number or trial length are different for signal i and j.
 
     Notes
     -----
-    The usage of `np.arctan2` ensures that the range of the phase difference
-    is :math:`[-\pi, \pi]` and is located in the correct quadrant.
+    This implementation is based on the formula taken from
+    :cite:`phase-Vinck11_1548` (pp.1550, equation (8)) :
+
+    .. math::
+        WPLI = \frac{| E( |Im(X)| * sgn(Im(X)) ) |}{E( |Im(X)| )}
+
+    with:
+        - :math:`E{...}` : expected value operator
+        - :math:`Im{X}` : imaginary component of the cross-spectrum
+        - :math:`X = Z_i Z_{j}^{*}` : cross-spectrum, averaged across
+        trials
+        - :math:`Z_i, Z_j`: complex-valued matrix, representing the Fourier
+        spectra of a particular frequency of the signals i and j.
+
     """
-    delta = alpha - beta
-    phase_diff = np.arctan2(np.sin(delta), np.cos(delta))
-    return phase_diff
+    if isinstance(signal_i, neo.AnalogSignal) and \
+            isinstance(signal_j, neo.AnalogSignal):  # neo.AnalogSignal input
+        if signal_i.sampling_rate.rescale("Hz") != \
+                signal_j.sampling_rate.rescale("Hz"):
+            raise ValueError("sampling rate of signal i and j must be equal")
+        sampling_frequency = signal_i.sampling_rate
+        signal_i = signal_i.magnitude
+        signal_j = signal_j.magnitude
+    else:  # np.array() or Quantity input
+        if sampling_frequency is None:
+            raise ValueError("sampling frequency must be given for np.array or"
+                             "Quantity input")
+
+    if np.shape(signal_i) != np.shape(signal_j):
+        if len(signal_i) != len(signal_j):
+            raise ValueError("trial number of signal i and j must be equal")
+        raise ValueError("trial length of signal i and j must be equal")
+
+    # calculate Fourier transforms
+    fft1 = np.fft.rfft(signal_i)
+    fft2 = np.fft.rfft(signal_j)
+    freqs = np.fft.rfftfreq(np.shape(signal_i)[1], d=1.0 / sampling_frequency)
+
+    # obtain cross-spectrum
+    cs = fft1 * np.conjugate(fft2)
+    # calculate WPLI
+    wpli_num = np.mean(np.abs(np.imag(cs)) * np.sign(np.imag(cs)), axis=0)
+    if absolute_value:
+        wpli_num = np.abs(wpli_num)
+    wpli_den = np.mean(np.abs(np.imag(cs)), axis=0)
+    wpli = wpli_num / wpli_den
+
+    return freqs, wpli
