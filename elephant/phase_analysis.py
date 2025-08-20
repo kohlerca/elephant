@@ -300,3 +300,39 @@ def weighted_phase_lag_index(signal_i, signal_j, sampling_frequency=None,
     wpli = wpli_num / wpli_den
 
     return freqs, wpli
+
+
+def PLV(first_signal, second_signal):
+    """
+    Calculates the phase locking value (PLV).
+
+    Parameters
+    ----------
+
+    first_signal, second_signal: Time-series of the first and second signals.
+
+    Returns
+    -------
+
+    Vector of floats with the PLV at each time point.
+
+    Reference
+    ---------
+
+    [1] Jean-Philippe Lachaux, Eugenio Rodriguez, Jacques Martinerie,
+    and Francisco J. Varela, "Measuring Phase Synchrony in Brain Signals"
+    Human Brain Mapping, vol 8, pp. 194-208, 1999.
+    """
+
+    ph_diff = list()
+    for first, second in zip(first_signal, second_signal):
+        sig_diff = first - second
+        ph_diff.append(np.arctan(np.sin(sig_diff), np.cos(sig_diff)))
+
+    zmean = np.mean(np.exp(1j * np.asarray(ph_diff)), axis=1)
+
+    r = np.empty_like(zmean, dtype=float)
+    for i, v in enumerate(zmean):
+        r[i] = np.sqrt(v.real * v.real + v.imag * v.imag)
+
+    return r

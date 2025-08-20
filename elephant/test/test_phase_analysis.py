@@ -551,5 +551,21 @@ class WeightedPhaseLagIndexTestCase(unittest.TestCase):
                 signal_x.magnitude, signal_y.magnitude)
 
 
+class PLVTestCase(unittest.TestCase):
+
+    def testPLV(self):
+        """
+        Test if the PLV's are 1, when 2 identical signals with identical
+        trials are passed.
+        """
+        # Create a signal with 100 trials and 1000 duration
+        signal = np.full([100, 1000], np.random.uniform(-np.pi, np.pi, 1000))
+
+        # Compute PLV and check against target
+        plvs = elephant.phase_analysis.PLV(signal, signal)
+        target_plvs = np.ones_like(plvs)
+        np.testing.assert_allclose(plvs, target_plvs, 1e-7)
+
+
 if __name__ == '__main__':
     unittest.main()
